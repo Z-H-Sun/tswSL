@@ -2,16 +2,20 @@
 # $hWnd = 0x0
 # $pID = 0
 
-# The following lines modifies the SaveTemp 1-8 hotkeys to be Winkey+F1-8
-# and LoadTemp 1-8 hotkeys to be Ctrl+Shift+F1-8
+# If you installed TSW elsewhere, and tswSL failed to find the SAVEDAT path (which is unlikely)
+# You can mannually assign it here, e.g. %userprofile%\AppData\Local\Tower of the Sorcerer\Savedat
+# SAVEDAT_PATH = File.join(ENV['userprofile'], 'AppData\Local\Tower of the Sorcerer\Savedat')
+
+# The following lines modifies the SaveTemp 1-8/custom hotkeys to be Winkey+F1-9
+# and LoadTemp 1-8/custom hotkeys to be Ctrl+Shift+F1-9
 # Note: the change of KEY will affect both SaveTemp and LoadTemp commands
 # and the change of MODIFIERS will affect all saving or loading commands
 MODIFIER[1] = 8 # Win
-KEY[0..7] = (112..119).to_a # F1-F8
+KEY[0..8] = (112..120).to_a # F1-F9
 # The following lines modifies the Quit hotkey to be Ctrl+Shift+Alt+Z:
-KEY[8] = 90 # Z
+KEY[9] = 90 # Z
 # And so on.
 # Cheat sheet: 0=None, 1=Alt, 2=Ctrl, 4=Shift, 8=Win.
 # Virtual key codes: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes. A-Z is just their ASCII (65-90). F1-F12 is 112-123.
 # MODIFIER: 0=Load..., 1=Save..., 2=Quit
-# KEY: 0-7=TempData1-7, 8=Quit
+# KEY: 0-7=TempData1-7, 8=TempDataCustom, 9=Quit
