@@ -26,10 +26,10 @@ See Also / 另请参见: [tswKai（改）](https://github.com/Z-H-Sun/tswKai); [
 * **New Feature in the latest release:** You can customize the filename of the tempdata to save or load (so you have infinite data spots to save now). / **新版功能**：可自定义临时存档的文件名（因此相当于拥有无限的存档空间）。
 
   * In the game, press <kbd><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>9</kbd></kbd> or <kbd><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>9</kbd></kbd> to load or to save a filename-customizable tempdata. / 在游戏中，按 <kbd><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>9</kbd></kbd> 或 <kbd><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>9</kbd></kbd> 以读取 / 保存一个可自定义文件名的存档。
-  * A text-editable combo box will appear at the bottom-right corner of the TSW window (see figure above); select or type the desired filename; / 游戏窗口右下角将出现一个可编辑文字的组合框，在其中选择或键入欲设置的文件名；
+  * A text-editable combo box will appear at the bottom-right corner of the TSW window (see figure above); select or type the desired filename; / 游戏窗口右下角将出现一个可编辑文字的组合框，在其中选择或键入欲设置的文件名（见上图）；
   
-    * The upper limit of the length is 9 bytes, and note each CJK character is 2-byte; / 长度上限为 9 字节，注意每个中日韩字符占 2 字节；
-    * You can even save the file to a subfolder by including a separater `\`, but this folder must exist; / 甚至可以在文本中包含目录分隔符 `\` 来将文件存至一个子目录中，但前提是该子目录存在；
+    * There is no more length limit on filename length in the latest release; / 最新版中解决了文件名长度上限问题（目前无上限）； ~~The upper limit of the length is 9 bytes, and note each CJK character is 2-byte; / 长度上限为 9 字节，注意每个中日韩字符占 2 字节；~~
+    * You can even save the file to a subfolder by including a separater `\` (in the latest release, the folder will be automatically created if it does not exist as long as `SAVEDAT_PATH` is found)~~, but this folder must exist~~; / 甚至可以在文本中包含目录分隔符 `\` 来将文件存至一个子目录中（最新版中，若文件夹不存在则将自动创建，只要程序能找到 `SAVEDAT_PATH`）~~，但前提是该子目录存在~~；
   * Then, press <kbd>Enter</kbd> to confirm or press <kbd>ESC</kbd> to cancel. / 随后，按 <kbd>Enter</kbd> 确定或按 <kbd>ESC</kbd> 取消。
 
 ## Troubleshooting / 疑难解答
