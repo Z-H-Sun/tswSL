@@ -10,6 +10,7 @@ WRITE_PROCESS = Win32API.new('kernel32', 'WriteProcessMemory', 'llplp', 'l')
 MESSAGE_BOX = Win32API.new('user32', 'MessageBox', 'lppi', 'l')
 GET_RECT = Win32API.new('user32','GetClientRect','lp','l')
 FIND_WIN = Win32API.new('user32', 'FindWindowEx', 'llpl', 'l')
+IS_WIN = Win32API.new('user32', 'IsWindow', 'l', 'l')
 SHOW_WIN = Win32API.new('user32','ShowWindow','li','i')
 UPDT_WIN = Win32API.new('user32','UpdateWindow','l','i')
 SET_FOC = Win32API.new('user32','SetFocus','l','l')
@@ -24,6 +25,8 @@ PROCESS_VM_OPERATION = 0x8
 MEM_COMMIT = 0x1000
 MEM_RESERVE = 0x2000
 PAGE_EXECUTE_READWRITE = 0x40
+MB_YESNO = 0x4
+MB_ICONQUESTION = 0x20
 MB_ICONEXCLAMATION = 0x30
 MB_ICONINFORMATION = 0x40
 WS_CHILD = 0x40000000
@@ -33,6 +36,7 @@ CBS_AUTOHSCROLL = 0x40
 CBS_DISABLENOSCROLL = 0x800
 CB_LIMITTEXT = 0x141
 CB_ADDSTRING = 0x143
+CB_DELETESTRING = 0x144
 CB_RESETCONTENT = 0x14B
 CB_SHOWDROPDOWN = 0x14F
 CB_FINDSTRINGEXACT = 0x158
@@ -52,40 +56,44 @@ MODIFIER = [6, 7, 7] # load = Shift+Ctrl; save = Shift+Ctrl+Alt; quit = Shift+Ct
 KEY = [49, 50, 51, 52, 53, 54, 55, 56, 57, 48] # data 1-8 = key1-8; custom data = key9; quit = key0
 TIME_STAMP = Time.now.strftime('\%m%dtmp_') # temp filename format
 
-$hWnd = Win32API.new('user32', 'FindWindow', 'pi', 'l').call('TTSW10', 0)
-$pID = '\0\0\0\0'
-Win32API.new('user32', 'GetWindowThreadProcessId', 'lp', 'l').call($hWnd, $pID)
-$pID = $pID.unpack('L')[0]
+def init()
+  $hWnd = Win32API.new('user32', 'FindWindow', 'pi', 'l').call('TTSW10', 0)
+  $pID = '\0\0\0\0'
+  Win32API.new('user32', 'GetWindowThreadProcessId', 'lp', 'l').call($hWnd, $pID)
+  $pID = $pID.unpack('L')[0]
 
-begin
-  load('tswSLdebug.txt')
-rescue Exception
-end
-raise("Cannot find the TSW process and/or window. Please check if\nTSW V1.2 is currently running.\n\nAs an advanced option, you can manually assign $hWnd and\n$pID in `tswSLdebug.txt'.") if $hWnd.zero? or $pID.zero?
-
-$hPrc = Win32API.new('kernel32', 'OpenProcess', 'lll', 'l').call(PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_VM_OPERATION, 0, $pID)
-$baseAddress = Win32API.new('kernel32', 'VirtualAllocEx', 'lllll', 'l').call($hPrc, 0, FILENAME_MAX+10, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) # allocate memory for filenames longer than FILENAME_LEN
-raise("Cannot open the TSW process for writing. Please check if\nTSW V1.2 is running with pID=#{$pID} and if you have proper\npermissions.") if $hPrc.zero? or $baseAddress.zero?
-
-$hWndText = 0
-width = 0
-wh = ' ' * 16
-while width < 600 # find the status bar, whose width is always larger than 600 (to avoid mistakenly finding other textbox window)
-  $hWndText = FIND_WIN.call($hWnd, $hWndText, 'TEdit', 0)
-  if $hWndText.zero?
-    MESSAGE_BOX.call($hWnd, "tswSL failed to find the status bar at the bottom of the TSW window. Please check whether this is really a TSW process?\n\n\tPID=#{$pID}, hWND=#{$hWnd}\n\nHowever, tswSL will continue running anyway.", 'tswSL', MB_ICONEXCLAMATION)
-    break
+  begin
+    load('tswSLdebug.txt')
+  rescue Exception
   end
-  GET_RECT.call($hWndText, wh)
-  width = wh.unpack('L4')[2]
+  raise("Cannot find the TSW process and/or window. Please check if\nTSW V1.2 is currently running. tswSL has stopped.\n\nAs an advanced option, you can manually assign $hWnd and\n$pID in `tswSLdebug.txt'.") if $hWnd.zero? or $pID.zero?
+
+  $hPrc = Win32API.new('kernel32', 'OpenProcess', 'lll', 'l').call(PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_VM_OPERATION, 0, $pID)
+  $baseAddress = Win32API.new('kernel32', 'VirtualAllocEx', 'lllll', 'l').call($hPrc, 0, FILENAME_MAX+10, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) # allocate memory for filenames longer than FILENAME_LEN
+  raise("Cannot open the TSW process for writing. Please check if\nTSW V1.2 is running with pID=#{$pID} and if you have proper\npermissions. tswSL has stopped.") if $hPrc.zero? or $baseAddress.zero?
+
+  $hWndText = 0
+  width = 0
+  wh = ' ' * 16
+  while width < 600 # find the status bar, whose width is always larger than 600 (to avoid mistakenly finding other textbox window)
+    $hWndText = FIND_WIN.call($hWnd, $hWndText, 'TEdit', 0)
+    if $hWndText.zero?
+      MESSAGE_BOX.call($hWnd, "tswSL failed to find the status bar at the bottom of the TSW window. Please check whether this is really a TSW process?\n\n\tPID=#{$pID}, hWND=#{$hWnd}\n\nHowever, tswSL will continue running anyway.", 'tswSL', MB_ICONEXCLAMATION)
+      break
+    end
+    GET_RECT.call($hWndText, wh)
+    width = wh.unpack('L4')[2]
+  end
+
+  # create a combo box at the bottom for customizing tempdata filename
+  Win32API.new('user32','GetClientRect','lp','l').call($hWnd, wh)
+  width, height = wh[8, 8].unpack('ll')
+  $hWndComboBox = Win32API.new('user32','CreateWindowEx','lppliiiillll','l').call(0, 'COMBOBOX', '', WS_CHILD|WS_VSCROLL|CBS_DROPDOWN|CBS_AUTOHSCROLL|CBS_DISABLENOSCROLL, width-105, height-28, 100, 200, $hWnd, 0, 0, 0)
+  MESSAGE_BOX.call($hWnd, 'Failed to create a combo box window in TSW, so tswSL will be unable to customize tempdata filename. However, tswSL will remain running, and other functions still work well.', 'tswSL', MB_ICONEXCLAMATION) if $hWndComboBox.zero?
+  SEND_MESSAGE.call($hWndComboBox, CB_LIMITTEXT, FILENAME_MAX, 0) # limit to 256 bytes
 end
 
-# create a combo box at the bottom for customizing tempdata filename
-Win32API.new('user32','GetClientRect','lp','l').call($hWnd, wh)
-width, height = wh[8, 8].unpack('ll')
-$hWndComboBox = Win32API.new('user32','CreateWindowEx','lppliiiillll','l').call(0, 'COMBOBOX', '', WS_CHILD|WS_VSCROLL|CBS_DROPDOWN|CBS_AUTOHSCROLL|CBS_DISABLENOSCROLL, width-105, height-28, 100, 200, $hWnd, 0, 0, 0)
-MESSAGE_BOX.call($hWnd, 'Failed to create a combo box window in TSW, so tswSL will be unable to customize tempdata filename. However, tswSL will remain running, and other functions still work well.', 'tswSL', MB_ICONEXCLAMATION) if $hWndComboBox.zero?
-SEND_MESSAGE.call($hWndComboBox, CB_LIMITTEXT, FILENAME_MAX, 0) # limit to 256 bytes
+init
 
 begin
   unless defined?(SAVEDAT_PATH)
@@ -99,7 +107,7 @@ rescue Exception
   MESSAGE_BOX.call($hWnd, "tswSL cannot find a valid SAVEDAT path for TSW. Do not panic, though; the only inconvenience is that the combo box will not list the datafiles available in that folder, but otherwise tswSL is fully functionable.\n\nAs an advanced option, you can manually assign SAVEDAT_PATH in `tswSLdebug.txt'.\n\ntswSL will continue running anyway.", 'tswSL', MB_ICONINFORMATION)
 end
 
-raise("Cannot register hotkey for quitting the program. It might be\ncurrently occupied by other processes or another instance of\ntswMP. Please close them to avoid confliction.\n\nDefault: Ctrl+Shift+Alt+0 (7+ 48); current (#{MODIFIER[2]}+ #{KEY[9]}). As an\nadvanced option, you can manually assign MODIFIER and KEY\nin `tswSLdebug.txt'.") if REG_HOTKEY.call(0, 18, MODIFIER[2], KEY[9]).zero?
+raise("Cannot register hotkey for quitting the program. It might be\ncurrently occupied by other processes or another instance of\ntswMP. Please close them to avoid confliction. tswSL has stopped.\n\nDefault: Ctrl+Shift+Alt+0 (7+ 48); current (#{MODIFIER[2]}+ #{KEY[9]}). As an\nadvanced option, you can manually assign MODIFIER and KEY\nin `tswSLdebug.txt'.") if REG_HOTKEY.call(0, 18, MODIFIER[2], KEY[9]).zero?
 failed = []
 for i in 0..8
   num = i < 8 ? i+1 : 'CUSTOM'
@@ -205,8 +213,8 @@ while GET_MESSAGE.call(msg, 0, 0, 0) != 0
   if msg[4, 4] == "\0\001\0\0" then offset = 8 elsif msg[8, 4] == "\0\001\0\0" then offset = 16 else offset = -1 end
   keyDown = msg[offset, 4].unpack('l')[0]
   TRAN_MESSAGE.call(msg)
-  DISP_MESSAGE.call(msg)
-  if offset > 0 and keyDown == 27 or keyDown == 13 # enter/esc
+  DISP_MESSAGE.call(msg) unless keyDown == 46 # del
+  if offset > 0 and keyDown == 27 or keyDown == 13 or keyDown == 46 # enter/esc/del
     if keyDown == 13
       fName = ' '*FILENAME_MAX
       len = SEND_MESSAGE.call($hWndComboBox, WM_GETTEXT, FILENAME_MAX, fName)
@@ -218,8 +226,27 @@ while GET_MESSAGE.call(msg, 0, 0, 0) != 0
       SEND_MESSAGE.call($hWndText, WM_SETTEXT, 0, '') # clear status bar
       SEND_MESSAGE.call($hWndComboBox, CB_ADDSTRING, 0, fName) if SEND_MESSAGE.call($hWndComboBox, CB_FINDSTRINGEXACT, -1, fName) < 0 # non-existing
       slTEMP(@save, 0, "\\"+fName)
-    else
+    elsif keyDown == 27
       SEND_MESSAGE.call($hWndText, WM_SETTEXT, 0, '') # clear status bar
+    else
+      fName = ' '*FILENAME_MAX
+      len = SEND_MESSAGE.call($hWndComboBox, WM_GETTEXT, FILENAME_MAX, fName)
+      fName.strip!
+      if !len.zero? and defined?(SAVEDAT_PATH)
+        next if MESSAGE_BOX.call($hWnd, "Are you sure you want to delete the following data:\n\t#{fName}", 'tswSL', MB_ICONQUESTION | MB_YESNO) == 7 # no
+        begin
+          fPath = "#{SAVEDAT_PATH}\\#{fName.strip}" # a bug in ruby 1.8.7: after "strip"ing once, there is still a \0 at the end, so you have to strip twice
+          File.delete(fPath)
+          SEND_MESSAGE.call($hWndComboBox, CB_DELETESTRING, SEND_MESSAGE.call($hWndComboBox, CB_FINDSTRINGEXACT, -1, fName), 0)
+          SEND_MESSAGE.call($hWndComboBox, WM_SETTEXT, 0, '')
+          MESSAGE_BOX.call($hWnd, "Data deleted.", 'tswSL', MB_ICONINFORMATION)
+        rescue
+          MESSAGE_BOX.call($hWnd, "Cannot delete the following file; please check its path:\n\n#{fPath}", 'tswSL', MB_ICONEXCLAMATION)
+        end
+      else # dispatch the keyboard event
+        DISP_MESSAGE.call(msg)
+      end
+      next
     end
     SHOW_WIN.call($hWndComboBox, SW_HIDE)
     SET_FOC.call(0) # restore focus
@@ -227,13 +254,13 @@ while GET_MESSAGE.call(msg, 0, 0, 0) != 0
   end
   # 32 bit? 64 bit? 0x312 = hotkey event
   if msg[4, 4] == "\x12\x03\0\0" then offset = 8 elsif msg[8, 4] == "\x12\x03\0\0" then offset = 16 else next end
+  init if IS_WIN.call($hWnd).zero? # TSW reloaded
   type = msg[offset, 4].unpack('l')[0]
   @save = type / 9 # 0 = load; 1 = save; 2 = quit
   num = type % 9 # 0-8
   if @save == 2 # exit
     SEND_MESSAGE.call($hWndText, WM_SETTEXT, 0, '')
     (0..18).each{|i| UNREG_HOTKEY.call(0, i)}
-    $hWnd = 0 if Win32API.new('user32', 'IsWindow', 'l', 'l').call($hWnd).zero? # TSW quited?
     MESSAGE_BOX.call($hWnd, "tswSaveLoad has stopped.", 'tswSL', MB_ICONINFORMATION)
     Win32API.new('kernel32', 'CloseHandle', 'l', 'l').call($hPrc)
     exit
