@@ -33,6 +33,7 @@ See Also / 另请参见: [tswKai（改）](https://github.com/Z-H-Sun/tswKai); [
   * **Data management function since V2.023**: After selecting or typing the filename of interest in the combobox, you can press <kbd>Delete</kbd> to delete that data file. To enable this function, `SAVEDAT_PATH` must be either found or defined in the program. / **自 2.023 版起提供存档管理功能**：在组合框中选中或键入目标存档的文件名，然后按 <kbd>Delete</kbd> 键删除，前提是程序能找到或用户自己定义 `SAVEDAT_PATH`。
   * Then, press <kbd>Enter</kbd> to confirm or press <kbd>ESC</kbd> to cancel. / 随后，按 <kbd>Enter</kbd> 确定或按 <kbd>ESC</kbd> 取消。
 * **New Feature since V2.023:** You can now have tsSL running in the background all the time; whenever a new TSW process is opened, the target of tswSL will be automatically switched to that process. Previously, if you quit and reopen another instance of TSW, you will have to close and reopen tswSL as well. / 现在可以在后台一直保持 tswSL 运行，即使新开另一个 TSW 进程，tswSL 也会自动切换作用对象为当前 TSW 进程。之前的版本中，如果退出 TSW 后重开，则 tswSL 也需要退出重开。
+* Supplementary note: The timestamp, `MMDD`, in the filenames of temporary savedata reflects the date you start an instance of TSW: If you never quit TSW, the timestamp will not change even if days have passed; however, if you restart TSW on a different day, the timestamp will change. / 补充说明：临时存档文件名中的时间戳 `月月日日` 反映的是开启对应 TSW 进程的日期，因此，如果你一直不关 TSW，那么即使到第二天，时间戳也不会更改；反之如果到第二天关掉先前进程并重启 TSW，那么时间戳将更改。
 
 ## Troubleshooting / 疑难解答
 * **Cannot find the TSW process and/or window**: Please check if TSW V1.2 is currently running. / **找不到魔塔进程或窗口**：请检查是否已经打开魔塔 1.2 版本。

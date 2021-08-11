@@ -54,9 +54,9 @@ FILENAME_LEN = 10
 FILENAME_MAX = 256 # not really, filename+path cannot exceed 260 chars
 MODIFIER = [6, 7, 7] # load = Shift+Ctrl; save = Shift+Ctrl+Alt; quit = Shift+Ctrl+Alt
 KEY = [49, 50, 51, 52, 53, 54, 55, 56, 57, 48] # data 1-8 = key1-8; custom data = key9; quit = key0
-TIME_STAMP = Time.now.strftime('\%m%dtmp_') # temp filename format
 
 def init()
+  $time_stamp = Time.now.strftime('\%m%dtmp_') # temp filename format
   $hWnd = Win32API.new('user32', 'FindWindow', 'pi', 'l').call('TTSW10', 0)
   $pID = '\0\0\0\0'
   Win32API.new('user32', 'GetWindowThreadProcessId', 'lp', 'l').call($hWnd, $pID)
@@ -137,7 +137,7 @@ def slTEMP(save, num, filename=nil)
   address = BASE_ADDRESS+PATH_ADDRESS[8*save+num]
   err = 0
   if filename.nil?
-    filename2 = TIME_STAMP+(num+1).to_s
+    filename2 = $time_stamp+(num+1).to_s
     # Temporarily change the path to the data file
     err = LST_ERR.call if WRITE_PROCESS.call($hPrc, address, filename2, FILENAME_LEN, '    ').zero?
   else
