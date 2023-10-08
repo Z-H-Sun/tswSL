@@ -71,7 +71,9 @@ please close it and then try again.',
 这些快捷键可能已被系统或其他进程占用。请关闭
 这些进程以避免冲突。或者可利用高级设置，在
 `tswSLdebug.txt` 中手动赋值给 `SL_MODIFIERS` 和
-`SL_HOTKEYS`。', # 20
+`SL_HOTKEYS`。
+
+不过，tswSL 仍将正常运行，其他快捷键仍有效。', # 20
 '读档自文件：当前设置为 %d+ %d
 ',
 '存档至文件：当前设置为 %d+ %d

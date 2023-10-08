@@ -440,7 +440,7 @@ $str::MSG_SAVE_UNSUCC.ljust(0x20, "\0") + # 07C0...07E0  string msg_save_unsucc
     SL_PATCH_BYTES_2.each {|i| ad = i[0]+BASE_ADDRESS; WriteProcessMemory.send(call, $hPrc, ad, bEnable ? (i[3] % [instance_variable_get(i[4])-i[5]-ad].pack('l')) : i[2], i[1], 0)}
   end
   def raiseInvalDir(reason)
-    if msgboxTxt(24, MB_ICONASTERISK | MB_OKCANCEL, $str::STRINGS[reason]) == IDCANCEL
+    if msgboxTxt(24, MB_ICONEXCLAMATION | MB_OKCANCEL, $str::STRINGS[reason]) == IDCANCEL
       preExit; msgboxTxt(13); exit
     end
     SendMessage.call($hWnd, WM_COMMAND, CHANGE_SAVEDIR_MENUID, 0)
@@ -505,7 +505,7 @@ for i in 0..2
 end
 RegisterHotKey.call_r(0, 4, SL_MODIFIERS[1], SL_HOTKEYS[1]) # quit
 msgboxTxt(11)
-msgboxTxt(20, MB_ICONASTERISK, failedHotkeys) unless failedHotkeys.empty?
+msgboxTxt(20, MB_ICONEXCLAMATION, failedHotkeys) unless failedHotkeys.empty?
 
 while GetMessage.call($buf, 0, 0, 0) > 0
   msg = $buf.unpack(MSG_INFO_STRUCT)
@@ -515,7 +515,7 @@ while GetMessage.call($buf, 0, 0, 0) > 0
   init if IsWindow.call($hWnd).zero? # reinit if TSW has quitted
 
   hasPopup = (API.focusTSW() != $hWnd) # bring that TSW game window to front end
-  if hasPopup then msgboxTxt(27, MB_ICONASTERISK); next end
+  if hasPopup then msgboxTxt(27, MB_ICONEXCLAMATION); next end
   case msg[2]
   when 1
     callFuncAsync(SL._sub_loadanydat) # if SendMessage is used here, GetOpenFileName can easily cause dead lock (freeze)
