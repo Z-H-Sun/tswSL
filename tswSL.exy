@@ -8,18 +8,28 @@ general:
 
 file:
   tswSL.rbw:
-  Win32API.so:
-    file: d:/ruby22-x64/lib/ruby/1.8/i386-mingw32/Win32API.so
+  win32/api.so:
+    file: D:/ruby187/lib/ruby/1.8/i386-mingw32/win32/api.so
     type: extension-library
+  ./stringsGBK.rb:
+  ./strings.rb:
 
 resource:
   icon:
-  - width : 64
-    height: 64
+  - width : 256
+    height: 256
+    color : 32
+    file : 1.ico
+  - width : 48
+    height: 48
+    color : 32
+    file : 1.ico
+  - width : 16
+    height: 16
     color : 32
     file : 1.ico
   version:
-    file_version_number : 2.0.2.0
-    product_version_number: 2.0.2.0
+    file_version_number : 3.0.0.0
+    product_version_number: 3.0.0.0
     company_name : Zack Sun
     product_name : tswSaveLoad
