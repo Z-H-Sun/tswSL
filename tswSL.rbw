@@ -4,6 +4,7 @@
 require 'win32/api'
 include Win32
 GetMessage = API.new('GetMessage', 'PLLL', 'I', 'user32')
+PeekMessage = API.new('PeekMessage','PLLLI','I', 'user32')
 SendMessage = API.new('SendMessageA', 'LLLP', 'L', 'user32')
 SendMessageW = API.new('SendMessageW', 'LLLP', 'L', 'user32')
 OpenProcess = API.new('OpenProcess', 'LLL', 'L', 'kernel32')
@@ -21,22 +22,39 @@ EnableWindow = API.new('EnableWindow', 'LI', 'L', 'user32')
 SetForegroundWindow = API.new('SetForegroundWindow', 'L', 'L', 'user32')
 RegisterHotKey = API.new('RegisterHotKey', 'LILL', 'L', 'user32')
 UnregisterHotKey = API.new('UnregisterHotKey', 'LI', 'L', 'user32')
+MsgWaitForMultipleObjects = API.new('MsgWaitForMultipleObjects', 'LSILL', 'I', 'user32')
+
+SW_HIDE = 0
 SW_SHOW = 4 # SHOWNOACTIVATE
 WM_SETTEXT = 0xC
 WM_GETTEXT = 0xD
 WM_COMMAND = 0x111
 WM_HOTKEY = 0x312
+
+VK_BACK = 8
+IDOK = 1
+IDCANCEL = 2
+IDYES = 6
+IDNO = 7
+MB_OKCANCEL = 0x1
+MB_YESNOCANCEL = 0x3
+MB_ICONQUESTION = 0x20
 MB_ICONEXCLAMATION = 0x30
 MB_ICONASTERISK = 0x40
+MB_DEFBUTTON2 = 0x100
 MB_SETFOREGROUND = 0x10000
 PROCESS_VM_WRITE = 0x20
 PROCESS_VM_READ = 0x10
 PROCESS_VM_OPERATION = 0x8
-case [''].pack('p').size
+PROCESS_SYNCHRONIZE = 0x100000
+POINTER_SIZE = [nil].pack('p').size
+case POINTER_SIZE
 when 4 # 32-bit ruby
   MSG_INFO_STRUCT = 'L7'
+  HANDLE_ARRAY_STRUCT = 'L*'
 when 8 # 64-bit
   MSG_INFO_STRUCT = 'Q4L3'
+  HANDLE_ARRAY_STRUCT = 'Q*'
 else
   raise 'Unsupported system or ruby version (neither 32-bit or 64-bit).'
 end
@@ -83,7 +101,11 @@ module Win32
     def call_r(*argv) # provide more info if a win32api returns null
       r = call(*argv)
       return r if $preExitProcessed # do not throw error if ready to exit
-      return r unless r.zero?
+      if function_name == 'MsgWaitForMultipleObjects'
+        return r if r >= 0 # WAIT_FAILED = (DWORD)0xFFFFFFFF
+      else
+        return r unless r.zero?
+      end
       err = '0x%04X' % API.last_error
       case function_name
       when 'OpenProcess', 'WriteProcessMemory', 'ReadProcessMemory', 'VirtualAllocEx'
@@ -116,17 +138,38 @@ def msgboxTxtW(textIndex, flag=MB_ICONASTERISK, *argv)
   API.msgbox(Str.utf8toWChar(Str::StrCN::STRINGS[textIndex] % argv), flag, MessageBoxW)
 end
 
-VK_BACK = 8
-IDOK = 1
-IDCANCEL = 2
-MB_OKCANCEL = 0x1
-
 VirtualAllocEx = API.new('VirtualAllocEx', 'LLLLL', 'L', 'kernel32')
 VirtualFreeEx = API.new('VirtualFreeEx', 'LLLL', 'L', 'kernel32')
+GetModuleHandle = API.new('GetModuleHandle', 'I', 'L', 'kernel32')
+CreateWindowEx = API.new('CreateWindowEx', 'LSSLIIIILLLL', 'L', 'user32')
+SetWindowText = API.new('SetWindowTextA', 'LS', 'L', 'user32')
+SetWindowTextW = API.new('SetWindowTextW', 'LS', 'L', 'user32')
+TranslateMessage = API.new('TranslateMessage', 'P', 'L', 'user32')
+DispatchMessage = API.new('DispatchMessage', 'P', 'L', 'user32')
 MEM_COMMIT = 0x1000
 MEM_RESERVE = 0x2000
 MEM_RELEASE = 0x8000
 PAGE_EXECUTE_READWRITE = 0x40
+
+QS_ALLINPUT = 0x4FF
+QS_TIMER = 0x10
+QS_ALLBUTTIMER = QS_ALLINPUT & ~QS_TIMER
+WAIT_TIMEOUT = 258
+
+WS_POPUP = 0x80000000
+WS_CHILD = 0x40000000
+WS_VISIBLE = 0x10000000
+WS_BORDER = 0x800000
+WS_EX_LAYERED = 0x80000
+WS_EX_TOOLWINDOW = 0x80
+WS_EX_TOPMOST = 8
+SS_SUNKEN = 0x1000
+SS_REALSIZEIMAGE = 0x800
+SS_NOTIFY = 0x100
+SS_ICON = 3
+SS_RIGHT = 2
+WM_LBUTTONDOWN = 0x201
+WM_MBUTTONDBLCLK = 0x209 # b/w 0x201 and 209 are mouse events
 
 MAX_PATH = 260
 GENERIC_READ = 0x80000000
@@ -485,6 +528,10 @@ $str::MSG_LOAD.ljust(0x20, "\0") # 09B0...09D0  string msg_load
   end
 end
 
+def disposeRes() # when switching to a new TSW process, hDC and hPrc will be regenerated, and the old ones should be disposed of
+  VirtualFreeEx.call($hPrc || 0, $lpNewAddr || 0, 0, MEM_RELEASE)
+  CloseHandle.call($hPrc || 0)
+end
 def preExit() # finalize
   return if $preExitProcessed # do not exec twice
   $preExitProcessed = true
@@ -493,50 +540,123 @@ def preExit() # finalize
     SL.compatibilizeExtSL(false) # restore
   rescue Exception
   end
-  VirtualFreeEx.call($hPrc || 0, $lpNewAddr, 0, MEM_RELEASE)
-  CloseHandle.call($hPrc || 0)
   UnregisterHotKey.call(0, 2)
+  disposeRes()
 end
 def raise_r(*argv)
   preExit() # ensure all resources disposed
   raise(*argv)
 end
-def init()
-  $hWnd = FindWindow.call(TSW_CLS_NAME, 0)
-  $tID = GetWindowThreadProcessId.call($hWnd, $buf)
-  $pID = $buf.unpack('L')[0]
-  begin
-    load('tswSLdebug.txt')
-  rescue Exception
-  end
-  raise("Cannot find the TSW process and/or window. Please check if TSW V1.2 is currently running. tswSL has stopped.\n\nAs an advanced option, you can manually assign $pID, $tID and $hWnd in `tswSLdebug.txt'.") if $hWnd.zero? or $pID.zero? or $tID.zero?
-  $hPrc = OpenProcess.call_r(PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_VM_OPERATION, 0, $pID)
-  tApp = readMemoryDWORD(TAPPLICATION_ADDR)
-  $hWndTApp = readMemoryDWORD(tApp+OFFSET_OWNER_HWND)
-  $TTSW = readMemoryDWORD(TTSW_ADDR)
-  edit8 = readMemoryDWORD($TTSW+OFFSET_EDIT8)
-  $hWndText = readMemoryDWORD(edit8+OFFSET_HWND)
-
-  if Str.isCHN()
+def initLang()
+  if $isCHN
     alias :msgboxTxt :msgboxTxtW
   else
     alias :msgboxTxt :msgboxTxtA
   end
+end
+def waitTillAvail(addr) # upon initialization of TSW, some pointers or handles are not ready yet; need to wait
+  r = readMemoryDWORD(addr)
+  while r.zero?
+    case MsgWaitForMultipleObjects.call_r(1, $bufHWait, 0, INTERVAL_TSW_RECHECK, QS_ALLBUTTIMER)
+    when 0 # TSW quits during waiting
+      disposeRes()
+      return
+    when WAIT_TIMEOUT
+      r = readMemoryDWORD(addr)
+    end
+  end
+  return r
+end
+def init()
+  $hWnd = FindWindow.call(TSW_CLS_NAME, 0)
+  $tID = GetWindowThreadProcessId.call($hWnd, $buf)
+  $pID = $buf.unpack('L')[0]
+  return false if $hWnd.zero? or $pID.zero? or $tID.zero?
+
+  begin
+    load('tswSLdebug.txt')
+  rescue Exception
+  end
+  $hPrc = OpenProcess.call_r(PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_VM_OPERATION | PROCESS_SYNCHRONIZE, 0, $pID)
+  $bufHWait[0, POINTER_SIZE] = [$hPrc].pack(HANDLE_ARRAY_STRUCT)
+
+  tApp = readMemoryDWORD(TAPPLICATION_ADDR)
+  $hWndTApp = readMemoryDWORD(tApp+OFFSET_OWNER_HWND)
+  $TTSW = readMemoryDWORD(TTSW_ADDR)
+  return unless (edit8 = waitTillAvail($TTSW+OFFSET_EDIT8))
+  return unless ($hWndText = waitTillAvail(edit8+OFFSET_HWND))
+
+  ShowWindow.call($hWndStatic1, SW_HIDE)
+  Str.isCHN()
+  initLang()
 
   $lpNewAddr = VirtualAllocEx.call_r($hPrc, 0, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) # 1 page size
   SL.init
+  msgboxTxt(11)
+  return true
+end
+def waitInit()
+  ShowWindow.call($hWndStatic1, SW_SHOW)
+  if $isCHN
+    SetWindowTextW.call($hWndStatic1, Str.utf8toWChar(Str::StrCN::STRINGS[20]))
+  else
+    SetWindowText.call($hWndStatic1, Str::StrEN::STRINGS[20])
+  end
+  loop do # waiting while processing messages
+    case MsgWaitForMultipleObjects.call_r(0, nil, 0, INTERVAL_TSW_RECHECK, QS_ALLBUTTIMER)
+    when 0
+      checkMsg(false)
+    when WAIT_TIMEOUT
+      break if init()
+    end
+  end
+end
+def checkMsg(checkAll=true)
+  while !PeekMessage.call($buf, 0, 0, 0, 1).zero?
+    msg = $buf.unpack(MSG_INFO_STRUCT)
+    case msg[1]
+    when WM_HOTKEY
+      case msg[2]
+      when 2
+        preExit; msgboxTxt(13); exit
+      end
+    when WM_LBUTTONDOWN..WM_MBUTTONDBLCLK
+      if msg[0] == $hWndStatic1
+        case msgboxTxt(21, MB_YESNOCANCEL|MB_DEFBUTTON2|MB_ICONQUESTION)
+        when IDYES
+          preExit; msgboxTxt(13); exit
+        when IDNO
+          ShowWindow.call($hWndStatic1, SW_HIDE)
+        end
+     end
+    end
+    TranslateMessage.call($buf)
+    DispatchMessage.call($buf)
+  end
 end
 
-init()
+begin
+  load('tswSLdebug.txt')
+rescue Exception
+end
+
+$bufHWait = "\0" * (POINTER_SIZE<<1)
+$hMod = GetModuleHandle.call_r(0)
+$hWndStatic1 = CreateWindowEx.call_r(WS_EX_TOOLWINDOW|WS_EX_TOPMOST, 'STATIC', '', WS_POPUP|WS_BORDER|SS_SUNKEN|SS_NOTIFY|SS_RIGHT, 20, 20, 142, 52, 0, 0, 0, 0)
+$hWndStatic2 = CreateWindowEx.call_r(0, 'STATIC', '#1', WS_CHILD|WS_VISIBLE|SS_REALSIZEIMAGE|SS_ICON, 0, 0, 48, 48, $hWndStatic1, 0, $hMod, 0)
 RegisterHotKey.call_r(0, 2, SL_QUIT_HOTKEY >> 8, SL_QUIT_HOTKEY & 0xFF)
-msgboxTxt(11)
+initLang()
+waitInit() unless init()
 
-while GetMessage.call($buf, 0, 0, 0) > 0
-  msg = $buf.unpack(MSG_INFO_STRUCT)
-  next if msg[1] != WM_HOTKEY
-
-  break if msg[2] == 2
-  init if IsWindow.call($hWnd).zero? # reinit if TSW has quitted
+loop do
+  case MsgWaitForMultipleObjects.call_r(1, $bufHWait, 0, -1, QS_ALLBUTTIMER)
+  when 0 # TSW has quitted
+    disposeRes()
+    waitInit()
+    next
+  when 1 # this thread's msg
+    checkMsg()
+  else
+    next
+  end
 end
-preExit
-msgboxTxt(13)

@@ -24,8 +24,14 @@ Use hotkeys to enhance the Load/Save function:
 'tswSaveLoad has stopped.',
 '','','','','','',
 
-'', # 20
-'',
+'-- tswKai3 --  
+Waiting for   
+TSW to start ', # 20
+'Do you want to stop waiting for the TSW game to start?
+
+Choose "Yes" to quit this app; "Cancel" to do nothing;
+"No" to continue waiting but hide this status window,
+and you can press F7 or F8 to show it again later.',
 
 '','',
 'The game\'s data storage path is %s.
@@ -56,8 +62,14 @@ please close it and then try again.',
 'tswSaveLoad（快捷存档）已退出。',
 '','','','','','',
 
-'', # 20
-'',
+'-- tswKai3 --  
+正在等待魔塔
+主进程启动…', # 20
+'是否停止等待魔塔主程序 TSW 启动？
+
+按“是”将退出本程序；按“取消”则继续待机；
+按“否”也将继续等待，但会隐藏此状态窗口，
+之后可按 F7 或 F8 等快捷键重新显示。',
 
 '当前游戏的存档路径%s。
 请在接下来的设置对话框中选定一个合适的新路径。',

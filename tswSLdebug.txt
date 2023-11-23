@@ -1,5 +1,15 @@
+# Unless otherwise noted, all settings here will be updated every time you start a new TSW process
+# i.e., while TSW is not running, you can modify this file, and these settings will be applied the next time you run TSW
+
 # Uncomment the following line to turn off auto saving temp data (i.e., snapshots), but other tswSL functions are not affected
 # $SLautosave = false
+
+# The following line makes this app always shown in Chinese language
+$isCHN = 1
+# Uncomment the following line to make this app always shown in English language
+# $isCHN = nil
+# Uncomment the following line to make tswSL auto decide which language to use according to which TSW is running
+# $isCHN = false
 
 # The following lines modify the Load Any Data hotkeys to be 'O'; Save Any Data to be 'S'; Rewind to Prev Snapshot to be 'Alt+Bksp'
 SL_HOTKEYS[0] = 0x000 | 'O'.ord
@@ -7,7 +17,12 @@ SL_HOTKEYS[1] = 0x000 | 'S'.ord
 SL_HOTKEYS[2] = 0x100 | VK_BACK
 
 # The following line modifies the Quit hotkeys to 'Ctrl+Shift+Bksp'
+# *Unlike other settings, this will be loaded only ONE-TIME upon initialization of this app and will NOT be updated every time you start a new TSW process*
 SL_QUIT_HOTKEY = 0x600 | VK_BACK
 
 # In the definitions of hotkeys above, the high byte defines the modifier: 0=None, 1=Alt, 2=Ctrl, 4=Shift, 8=Win;
 # And the low byte is the virtual key code: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes, e.g., A-Z is just their ASCII (65-90). F1-F12 is 112-123.
+
+# Set the interval for checking TSW status (in msec; default 500 ms)
+# For example, when TSW is not running, this app will check every `INTERVAL_TSW_RECHECK` msec if a new TSW instance has started up
+INTERVAL_TSW_RECHECK = 250
