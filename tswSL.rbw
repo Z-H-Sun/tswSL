@@ -3,15 +3,15 @@
 
 require 'win32/api'
 include Win32
-GetMessage = API.new('GetMessage', 'PLLL', 'L', 'user32')
-SendMessage = API.new('SendMessage', 'LLLP', 'L', 'user32')
+GetMessage = API.new('GetMessage', 'PLLL', 'I', 'user32')
+SendMessage = API.new('SendMessageA', 'LLLP', 'L', 'user32')
 SendMessageW = API.new('SendMessageW', 'LLLP', 'L', 'user32')
 OpenProcess = API.new('OpenProcess', 'LLL', 'L', 'kernel32')
 ReadProcessMemory = API.new('ReadProcessMemory', 'LLPLL', 'L', 'kernel32')
 WriteProcessMemory = API.new('WriteProcessMemory', 'LLPLL', 'L', 'kernel32')
 CloseHandle = API.new('CloseHandle', 'L', 'L', 'kernel32')
 GetWindowThreadProcessId = API.new('GetWindowThreadProcessId', 'LP', 'L', 'user32')
-MessageBox = API.new('MessageBox', 'LSSI', 'L', 'user32')
+MessageBox = API.new('MessageBoxA', 'LSSI', 'L', 'user32')
 MessageBoxW = API.new('MessageBoxW', 'LSSI', 'L', 'user32')
 IsWindow = API.new('IsWindow', 'L', 'L', 'user32')
 FindWindow = API.new('FindWindow', 'SL', 'L', 'user32')
@@ -53,8 +53,15 @@ MAP_ADDR = 0xb8934 + BASE_ADDRESS
 MIDSPEED_MENUID = 33 # The idea is to hijack the midspeed menu
 MIDSPEED_ADDR = 0x7f46d + BASE_ADDRESS # so once click event of that menu item is triggered, arbitrary code can be executed
 MIDSPEED_ORIG = 0x6F # original bytecode (call TTSW10.speedmiddle@0x47f4e0)
-$buf="\0"*640
+$buf = "\0" * 640
 require './strings'
+unless String.instance_methods.include?(:ord) # backward compatibility w/ Ruby < 1.9
+  class String
+    def ord
+      self[0]
+    end
+  end
+end
 module Win32
   class API
     def self.focusTSW()
@@ -64,23 +71,25 @@ module Win32
       SetForegroundWindow.call(hWnd) # SetForegroundWindow for $hWndTApp can also achieve similar effect, but can sometimes complicate the situation, e.g., LastActivePopup will be $hWndTApp if no mouse/keyboard input afterwards
       return hWnd
     end
-    def self.msgbox(text, flag=MB_ICONASTERISK, api=MessageBox, title='tswSL')
+    def self.msgbox(text, flag=MB_ICONASTERISK, api=(ansi=true; MessageBox), title=$appTitle)
       if IsWindow.call($hWnd || 0).zero?
         hWnd = $hWnd = 0 # if the window has gone, create a system level msgbox
       else
         hWnd = focusTSW()
       end
+      title = (ansi ? 'tswSL' : "t\0s\0w\0S\0L\0\0") unless $appTitle
       return api.call(hWnd, text, title, flag | MB_SETFOREGROUND)
     end
     def call_r(*argv) # provide more info if a win32api returns null
       r = call(*argv)
+      return r if $preExitProcessed # do not throw error if ready to exit
       return r unless r.zero?
       err = '0x%04X' % API.last_error
       case function_name
       when 'OpenProcess', 'WriteProcessMemory', 'ReadProcessMemory', 'VirtualAllocEx'
         reason = "Cannot open / read from / write to / alloc memory for the TSW process. Please check if TSW V1.2 is running with pID=#{$pID} and if you have proper permissions."
       when 'RegisterHotKey'
-        reason = "Cannot register hotkey. It might be currently occupied by other processes or another instance of tswSL. Please close them to avoid confliction. Default: Ctrl+Alt+Bksp (3+ 8); current: (#{SL_MODIFIERS[1]}+ #{SL_HOTKEYS[1]}). As an advanced option, you can manually assign `MODIFIER` and `KEY` in `tswSLdebug.txt'."
+        reason = "Cannot register hotkey. It might be currently occupied by other processes or another instance of tswSL. Please close them to avoid confliction. Default: Ctrl+Alt+Bksp (3+ 8); current: (#{SL_QUIT_HOTKEY >> 8}+ #{SL_QUIT_HOTKEY & 0xFF}). As an advanced option, you can manually assign `MODIFIER` and `KEY` in `tswSLdebug.txt'."
       else
         reason = "This is a fatal error. That is all we know."
       end
@@ -101,10 +110,10 @@ def callFunc(address) # execute the subroutine at the given address
   writeMemoryDWORD(MIDSPEED_ADDR, MIDSPEED_ORIG) # restore
 end
 def msgboxTxtA(textIndex, flag=MB_ICONASTERISK, *argv)
-  API.msgbox(Str::StrEN::STRINGS[textIndex] % argv, flag, MessageBox)
+  API.msgbox(Str::StrEN::STRINGS[textIndex] % argv, flag)
 end
 def msgboxTxtW(textIndex, flag=MB_ICONASTERISK, *argv)
-  API.msgbox(Str.utf8toWChar(Str::StrCN::STRINGS[textIndex] % argv), flag, MessageBoxW, "t\0s\0w\0S\0L\0\0\0")
+  API.msgbox(Str.utf8toWChar(Str::StrCN::STRINGS[textIndex] % argv), flag, MessageBoxW)
 end
 
 VK_BACK = 8
@@ -114,9 +123,6 @@ MB_OKCANCEL = 0x1
 
 VirtualAllocEx = API.new('VirtualAllocEx', 'LLLLL', 'L', 'kernel32')
 VirtualFreeEx = API.new('VirtualFreeEx', 'LLLL', 'L', 'kernel32')
-PostMessage = API.new('PostMessage', 'LLLP', 'L', 'user32')
-PeekMessage = API.new('PeekMessage','PLLLI','L', 'user32')
-SendMessageCallback = API.new('SendMessageCallback', 'LLLPKL', 'L', 'user32')
 MEM_COMMIT = 0x1000
 MEM_RESERVE = 0x2000
 MEM_RELEASE = 0x8000
@@ -138,12 +144,13 @@ TEDIT8_MSGID_ADDR = 0x8c58c + BASE_ADDRESS
 ITEM_ID_ADDR = 0x8c574 + BASE_ADDRESS
 GOLD_PRICE_ADDR = 0x8c594 + BASE_ADDRESS
 FILENAME_ADDR = 0x8c5d4 + BASE_ADDRESS
-FILE_HANDLE_ADDR = 0x8c600 + BASE_ADDRESS
 HERO_FACE_ADDR = 0xb87e8 + BASE_ADDRESS
+DATA_CHECK1_ADDR = 0xb8918 + BASE_ADDRESS
 
 HANDLE_FINALLY_ADDR = 0x3140 + BASE_ADDRESS
 ITEM_LIVE_ADDR = 0x50880 + BASE_ADDRESS
-LOAD_WORK_ADDR = 0x7e7d4 + BASE_ADDRESS
+FORMKEYDOWN_ADDR = 0x60BD8 + BASE_ADDRESS
+LOAD8_CLICK_ADDR = 0x7e614 + BASE_ADDRESS
 SAVE_WORK_ADDR = 0x7eadc + BASE_ADDRESS
 
 LOAD_LIBRARY_ADDR = 0x4bfc + BASE_ADDRESS
@@ -160,70 +167,83 @@ LOAD_SUCCESS_MSG_ID = 0x85
 SAVE_SUCCESS_MSG_ID = 0x86
 CHANGE_SAVEDIR_MENUID = 46
 
-SL_MODIFIERS = [1, 3] # load: Alt; save: Ctrl+Alt
-SL_HOTKEYS = [0x30, VK_BACK] # load/save arbitrary data: "0"; load temp data / quit: "Backspace"
+SL_HOTKEYS = [0x200 | 'L'.ord, 0x200 | 'S'.ord, 0x000 | VK_BACK, 0x400 | VK_BACK] # load arbitrary data (Ctrl+L) / save arbitrary data (Ctrl+S) / load prev temp data (Bksp) / load next temp data (Shift+Bksp)
+# high byte = modifier (1=Alt, 2=Ctrl, 4=Shift); low byte = key
+
+SL_QUIT_HOTKEY = 0x300 | VK_BACK # Ctrl+Alt+Backspace
+# high byte = modifier (1=Alt, 2=Ctrl, 4=Shift); low byte = key
+INTERVAL_TSW_RECHECK = 500 # in msec: when TSW is not running, check every 500 ms if a new TSW instance has started up
 
 $SLautosave = true # whether to enable auto saving temp data
 
 module SL
   SL_PATCH_BYTES_1 = [ # address, len, original bytes, patched bytes, variable to insert into patched bytes
-[0x7eb56, 33, # savework_1
+[0x47eb56, 33, # savework_1
  "\xE8\x32\x5A\xF8\xFF\xE8\xB0\x3B\xF8\xFF\xB8\x00\xC6\x48\x00\xE8\x4E\x57\xF8\xFF\xE8\xA1\x3B\xF8\xFF\x6A\x00\x66\x8B\x0D\xA0\xEC\x47",
  "\x50\xE8\x31\x5A\xF8\xFF\xE8\xAF\x3B\xF8\xFF\x58\xE8\x51\x57\xF8\xFF\xE8\xA4\x3B\xF8\xFF\x8B\x0D%s\x85\xC9\x74\x13\x6A",
  :@_save_overwrite_dialog_style],
-[0x7ebf2, 9, # savework_2_1
+[0x47ebf2, 9, # savework_2_1
  "\xC7\x05\x8C\xC5\x48\x00\x86\x00\x00",
  "\xA1%s\xA3\x8C\xC5\x48", :@_save_success_msg_tedit8_id],
-[0x7ec7f, 9, # savework_2_2
+[0x47ec7f, 9, # savework_2_2
  "\xC7\x05\x8C\xC5\x48\x00\x86\x00\x00",
  "\xA1%s\xA3\x8C\xC5\x48", :@_save_success_msg_tedit8_id],
-[0x7e810, 40, # loadwork_1
+[0x47e6e0, 31, # Load81Click
+ "\x8B\x80\x18\x01\x00\x00\x33\xD2\x8B\x30\xFF\x56\x0C\x8B\x55\xFC\xB8\xD4\xC5\x48\x00\xB9\x88\xDB\x47\x00\xE8\xDD\x5B\xF8\xFF",
+ "\xB8\xD4\xC5\x48\x00\x3B\x05%s\x75\x7A\x8B\x38\xBE\xC8\xE7\x47\x00\x03\x7F\xFC\x8B\x4E\xFC\x29\xCF\x41\xF3\xA4",
+ :@_filename_pointer_addr],
+[0x47e810, 40, # loadwork_1
  "\x8B\x15\xD4\xC5\x48\x00\xB8\x00\xC6\x48\x00\xE8\x2D\x59\xF8\xFF\x33\xFF\x55\x68\x42\xEA\x47\x00\x64\xFF\x37\x64\x89\x27\xBA\x01\x00\x00\x00\xB8\x00\xC6\x48\x00",
  "\xA1%s\x8B\x10\xB8\x00\xC6\x48\x00\x50\xE8\x2B\x59\xF8\xFF\x58\x33\xFF\x55\x68\x42\xEA\x47\x00\x64\xFF\x37\x64\x89\x27\xBA\x01\x00\x00\x00\x90\x90",
  :@_filename_pointer_addr],
-[0x7e8c0, 49, # loadwork_2
+[0x47e8c0, 49, # loadwork_2
  "\x81\xFA\xA4\x00\x00\x00\x75\xD7\x3B\x35\x18\x89\x4B\x00\x75\x27\x3B\x0D\x1C\x89\x4B\x00\x75\x1F\x8B\x45\xFC\xE8\x08\x65\xFD\xFF\xC7\x05\x8C\xC5\x48\x00\x85\x00\x00\x00\x8B\x45\xFC\xE8\x42\xE2\xFC",
  "\x80\xFA\xA4\x75\xDA\x3B\x35\x18\x89\x4B\x00\x75\x2A\x3B\x0D\x1C\x89\x4B\x00\x75\x22\x8B\x45\xFC\x50\xE8\x0A\x65\xFD\xFF\xC6\x05\x8C\xC5\x48\x00\x85\x58\xE8\x49\xE2\xFC\xFF\xC6\x05%s",
- :@_last_coordinate]]
+ :@_last_coordinate],
+[0x45084d, 2, # itemdel
+ "\x33\xD2", "\xEB\x0B", :@null_pointer],
+[FORMKEYDOWN_ADDR, 10, # formkeydown
+ "\x55\x8B\xEC\x53\x56\x57\x8B\xF1\x8B\xD8",
+ "\xE8%s\x55\x53\x56\x57\x90", :@TTSW10_formkeydown_offset_sub_checkHotkey]]
 
 
   SL_PATCH_BYTES_2 = [ # address, len, original bytes, patched bytes, pointer to call, offset after the `call` operand
-[0x4a589, 31, # taisen
+[0x44a589, 31, # taisen
  "\x12\x8B\x45\xFC\xE8\xBA\x1A\x00\x00\xC7\x05\xB8\x86\x4B\x00\x01\x00\x00\x00\xA1\xB8\xC5\x48\x00\xA3\x5C\xC5\x48\x00\xA1\xB8",
  "\x17\xE8%s\x8B\x45\xFC\xE8\xB5\x1A\x00\x00\xC7\x05\xB8\x86\x4B\x00\x01\x00\x00\x00\xA1\xB8\xC5\x48\x00\xA3\x5C",
  :@_sub_savetemp, 6],
-[0x4460b, 8, # handan_yellowdoors
+[0x44460b, 8, # handan_yellowdoors
  "\x83\x3D\xA8\x86\x4B\x00\x00\x7E",
  "\xB0\x08\xE8%s\x7C", :@_sub_checkkey, 7],
-[0x4463a, 8, # handan_yellowdoors
+[0x44463a, 8, # handan_yellowdoors
  "\x83\x3D\xB0\x86\x4B\x00\x00\x7E",
  "\xB0\x0A\xE8%s\x7C", :@_sub_checkkey, 7],
-[0x44669, 8, # handan_yellowdoors
+[0x444669, 8, # handan_yellowdoors
  "\x83\x3D\xAC\x86\x4B\x00\x00\x7E",
  "\xB0\x09\xE8%s\x7C", :@_sub_checkkey, 7],
-[0x497ee, 33, # roujin_2F
+[0x4497ee, 33, # roujin_2F
  "\xC7\x05\x5C\xC5\x48\x00\x42\x00\x00\x00\x83\x3D\x10\x88\x4B\x00\x00\x0F\x85\x65\x03\x00\x00\xC7\x05\x10\x88\x4B\x00\x01\x00\x00\x00",
  "\xB0\x42\xA3\x5C\xC5\x48\x00\x83\x3D\x10\x88\x4B\x00\x00\x0F\x85\x68\x03\x00\x00\xE8%s\xC6\x05\x10\x88\x4B\x00\x01\x90",
  :@_sub_savetemp, 25],
-[0x4e267, 6, # Button2Click (syounin_yes)
+[0x44e267, 6, # Button2Click (syounin_yes)
  "\x3B\x05\x94\xC5\x48\x00",
  "\xE8%s\x90", :@_sub_checkgold, 5],
-[0x4e4f8, 8, # Button2Click (syounin_28F_yes)
+[0x44e4f8, 8, # Button2Click (syounin_28F_yes)
  "\x83\x3D\xA8\x86\x4B\x00\x00\x75",
  "\xB0\x08\xE8%s\x7D", :@_sub_checkkey, 7],
-[0x50bdf, 5, # Button38Click (item_use)
+[0x450bdf, 5, # Button38Click (item_use)
  "\xA1\x74\xC5\x48\x00",
  "\xE8%s", :@_sub_checkitem, 5],
-[0x51e7e, 6, # Button39Click (altar_addHP)
+[0x451e7e, 6, # Button39Click (altar_addHP)
  "\x3B\x05\x94\xC5\x48\x00",
  "\xE8%s\x90", :@_sub_checkgold, 5],
-[0x52116, 6, # Button39Click (altar_addATK)
+[0x452116, 6, # Button39Click (altar_addATK)
  "\x3B\x05\x94\xC5\x48\x00",
  "\xE8%s\x90", :@_sub_checkgold, 5],
-[0x523c2, 6, # Button39Click (altar_addDEF)
+[0x4523c2, 6, # Button39Click (altar_addDEF)
  "\x3B\x05\x94\xC5\x48\x00",
  "\xE8%s\x90", :@_sub_checkgold, 5],
-[0x6399b, 5, # mevent (traps)
+[0x46399b, 5, # mevent (traps)
  "\xA1\x98\x86\x4B\x00",
  "\xE8%s", :@_sub_checkfloor, 5]]
 
@@ -231,9 +251,6 @@ module SL
   class << self
     attr_reader :savedat_path
     attr_reader :_tmp_id
-    attr_reader :_sub_load_temp
-    attr_reader :_sub_loadanydat
-    attr_reader :_sub_saveanydat
   end
   module_function
   def init
@@ -253,6 +270,7 @@ module SL
     dat_filename = tmp_filename[0...-10] + Time.now.strftime('%y%m%d_1.dat')
 
     # these are all pointers to the corresponding variables:
+    @null_pointer = 0
     @_tmp_filename = $lpNewAddr
     @_bytesRead = $lpNewAddr + 0x108
     @_tmp_id = $lpNewAddr + 0x10c
@@ -273,11 +291,14 @@ module SL
     @_title_save = $lpNewAddr + 0x4b8
     @_dialog_struct = $lpNewAddr + 0x4c4
     @_sub_init = $lpNewAddr + 0x510
-    @_sub_load_temp = $lpNewAddr + 0x574
-    offset_sub_rec_tmpid = 0x5c8
+    offset_sub_loadtemp = 0x574
+    @_sub_loadtemp = $lpNewAddr + offset_sub_loadtemp
+    offset_sub_rec_tmpid = 0x5d0
     @_sub_rec_tmpid = $lpNewAddr + offset_sub_rec_tmpid
-    @_sub_loadanydat = $lpNewAddr + 0x60c
-    @_sub_saveanydat = $lpNewAddr + 0x65c
+    offset_sub_loadanydat = 0x614
+    @_sub_loadanydat = $lpNewAddr + offset_sub_loadanydat
+    offset_sub_saveanydat = 0x65c
+    @_sub_saveanydat = $lpNewAddr + offset_sub_saveanydat
     offset_sub_saveas = 0x70c
     @_sub_saveas = $lpNewAddr + offset_sub_saveas
     @_sub_checkkey = $lpNewAddr + 0x7e0
@@ -286,9 +307,11 @@ module SL
     @_sub_savetemp = $lpNewAddr + offset_sub_savetemp
     @_sub_checkfloor = $lpNewAddr + 0x85c
     @_sub_checkitem = $lpNewAddr + 0x8d0
+    @_sub_checkHotkey = $lpNewAddr + 0x924
+    @TTSW10_formkeydown_offset_sub_checkHotkey = @_sub_checkHotkey-FORMKEYDOWN_ADDR-5
 
     injBuf = tmp_filename.ljust(MAX_PATH+10, "\0") + # 0000...0108: string tmp_filename; 0108...010C: dword bytesRead; 010C: byte tmp_id
-"\xFF\0" + # 010E: word last_coordinate = x+y*16+floor*256 (do not save temp data with the same last_coordinate; set as 255 at the start of / after loading a game, so no coordinate will be equal to this value, i.e. always save a first temp data)
+"\xFE\0" + # 010E: word last_coordinate = x+y*16+floor*256 (do not save temp data with the same last_coordinate; set as 254 at the start of / after loading a game, so no coordinate will be equal to this value, i.e. always save a first temp data)
 dat_filename.ljust(MAX_PATH+4, "\0") + "_1.dat\0\0" + # 0110...0218: string dat_filename; 0218...0220: qword string dat_suffix
 '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBFC0C1C2C3C4C5C6C7C8C9CACBCCCDCECFD0D1D2D3D4D5D6D7D8D9DADBDCDDDEDFE0E1E2E3E4E5E6E7E8E9EAEBECEDEEEFF0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF' + # 0220...0420: word string[256] id_str # covert byte to 2-digit hex string
 "ComDlg32.dll\0\0\0\0GetOpenFileNameA\0\0\0\0GetSaveFileNameA\0\0\0\0" + # 0420...042E: string comdlg32_dllname; 0430...0441: string opendialog_funcname; 0444...0455: string savedialog_funcname
@@ -332,31 +355,31 @@ $str::TITLE_LOAD_STR.ljust(12, "\0") + $str::TITLE_SAVE_STR.ljust(12, "\0") + # 
 ].pack('CLClCLCCLCClCLClCLSSSSSCLCLClSSSSCLSCLSlClS') +
 
 # 0574: subroutine loadtemp:
-[0x3150, 0xa3c0, TEDIT8_MSGID_ADDR, 0xa0, @_tmp_id, 0xc8fe,
- 0x45048b66, @_id_str, 0xa366, @tmp_id_addr,
- 0xb8, FILE_HANDLE_ADDR, 0xa3, @_filename_pointer_addr, 0x00c7, @_tmp_filename,
- 0x048b, 0xe824, LOAD_WORK_ADDR-$lpNewAddr-0x5a9, # 05A4...05A9  call TTSW10.loadwork
- 0x05c7, @_filename_pointer_addr, FILENAME_ADDR, 0xe858, ITEM_LIVE_ADDR-$lpNewAddr-0x5b9, # 05B4...05B9  call TTSW10.itemlive
- 0x3d80, TEDIT8_MSGID_ADDR, LOAD_SUCCESS_MSG_ID,
- 0xb075, 0x0dfe, @_tmp_id].pack('SSLCLSLLSLCLCLSLSSlSLLSlSLCSSL') +
+[0xc031, 0xa3, TEDIT8_MSGID_ADDR, 0xa0, @_tmp_id, 0xc828, 0x50,
+ 0x8b66, 0x4504, @_id_str, 0x50, 0xa366, @tmp_id_addr,
+ 0xb8, DATA_CHECK1_ADDR, 0xa3, @_filename_pointer_addr, 0x00c7, @_tmp_filename,
+ 0xc38b, 0xe8, LOAD8_CLICK_ADDR-$lpNewAddr-0x5a9, # 05A4...05A9  call TTSW10.Load81Click
+ 0x05c7, @_filename_pointer_addr, FILENAME_ADDR,
+ 0xba58, $lpNewAddr+0x9b0, 0x8966, 0x1742, 0x58, 0x3d80,
+ TEDIT8_MSGID_ADDR, LOAD_SUCCESS_MSG_ID, 0x0775, 0xa2,
+ @_tmp_id, 0x08b1, 0x90c3].pack('SCLCLSCSSLCSLCLCLSLSClSLLSLSSCSLCSCLSS') +
 
-# 05C8: subroutine rec_tmpid:
+# 05D0: subroutine rec_tmpid:
 [0x66, 0x05C7, @tmp_id_addr, 0x4449, 0x006a, 0x026a, 0x046a, 0x006a, 0x076a,
  0x68, GENERIC_WRITE, 0x68, @_tmp_filename,
- 0xe8, CREATE_FILE_ADDR-$lpNewAddr-0x5ea, # 05E5...05EA  call CreateFileA
+ 0xe8, CREATE_FILE_ADDR-$lpNewAddr-0x5F2, # 05ED...05F2  call CreateFileA
  0xf883, 0x74ff, 0x501a, 0x006a, 0x68, @_bytesRead, 0x016a, 0x68, @_tmp_id,
- 0xe850, WRITE_FILE_ADDR-$lpNewAddr-0x604, # 05FF...0604  call WriteFile
- 0xe8, CLOSE_HANDLE_ADDR-$lpNewAddr-0x609, # 0604...0609  call CloseHandle
+ 0xe850, WRITE_FILE_ADDR-$lpNewAddr-0x60c, # 0607...060C  call WriteFile
+ 0xe8, CLOSE_HANDLE_ADDR-$lpNewAddr-0x611, # 060C...0611  call CloseHandle
  0xc3, 0x9090].pack('CSLSSSSSSCLCLClSSSSCLSCLSlClCS') +
 
-# 060C: subroutine loadanydat:
-[0xb850, @_dialog_struct, 0x40c7, 0x18, 1, 0x40c7, 0x30, @_title_load,
- 0x40c7, 0x34, OFN_TSWSL_LOAD, 0x50, 0x15ff, @_opendialog_addr, 0xc085, 0x5b, 0x2874,
- 0xb8, FILE_HANDLE_ADDR, 0xa3, @_filename_pointer_addr, 0x00c7, @_dat_filename,
- 0xc38b, 0xe8, LOAD_WORK_ADDR-$lpNewAddr-0x64a, # 0645...064A  call TTSW10.loadwork
+# 0614: subroutine loadanydat:
+[0xb8, @_dialog_struct, 0x40c7, 0x18, 1, 0x40c7, 0x30, @_title_load,
+ 0x40c7, 0x34, OFN_TSWSL_LOAD, 0x50, 0x15ff, @_opendialog_addr, 0xc085, 0x2174,
+ 0xb8, DATA_CHECK1_ADDR, 0xa3, @_filename_pointer_addr, 0x00c7, @_dat_filename,
+ 0xc38b, 0xe8, LOAD8_CLICK_ADDR-$lpNewAddr-0x650, # 064B...0650  call TTSW10.Load81Click
  0x05c7, @_filename_pointer_addr, FILENAME_ADDR,
- 0xc38b, 0xe8, ITEM_LIVE_ADDR-$lpNewAddr-0x65b, # 0656...065B  call TTSW10.itemlive
- 0xc3].pack('SLSCLSCLSCLCSLSCSCLCLSLSClSLLSClC') +
+ 0x90c3].pack('CLSCLSCLSCLCSLSSCLCLSLSClSLLS') +
 
 # 065C: subroutine saveanydat:
 [0x006a, 0x006a, 0x036a, 0x006a, 0x076a, 0x006a, 0x68, @_dat_filename,
@@ -422,7 +445,23 @@ $str::MSG_SAVE_UNSUCC.ljust(0x20, "\0") + # 07C0...07E0  string msg_save_unsucc
 "\x83\x3C\x24\x09\x74\x08\x83\xF8\x01\x7C\x29\x48\xEB\x06\x83\xF8\x32\x7D\x21\x40\x6B\xC8\x7B\x8B\x42" +
 [STATUS_INDEX[7]<<2, 0xc06b, 0xb, 0xc101, 0x428b, STATUS_INDEX[6]<<2, 0xc083, 0x8002, 0x08bc,
  MAP_ADDR, 0x7506, 0xe805, offset_sub_savetemp-0x922, # 091D...0922  call sub_savetemp
- 0xc358].pack('CSCSSCSSSLSSlS')
+ 0xc358].pack('CSCSSCSSSLSSlS') +
+
+# 0924: subroutine checkHotkey:
+"\x8B\xF1\x8B\xD8\x8A\x74\x24\x08\xB2\x00\x66\xD1\xEA\xC0\xEA\x05\x08\xD6\x8A\x16\xC6\x06\x00\x66\x81\xFA" +
+[SL_HOTKEYS[0], 0x840f, offset_sub_loadanydat-0x946, # 0940...0946  je sub_loadanydat
+ 0x8166, 0xfa, SL_HOTKEYS[1], 0x840f, offset_sub_saveanydat-0x951, # 094B...0951  je sub_saveanydat
+ 0x01b1, 0x8166, 0xfa, SL_HOTKEYS[2], 0x1674, 0x8166, 0xfa, SL_HOTKEYS[3],
+ 0x0374, 0x1688, 0xc3, 0xffb1, 0x0d38, @_last_coordinate,
+ 0x0274, 0x00b1, 0xe8, offset_sub_loadtemp-0x975 # 0970...0975  call sub_loadtemp
+].pack('SSlSCSSlSSCSSSCSSSCSSLSSCl') +
+"\x8B\x44\x11\xF0\x89\x02\x8B\x44\x11\xF4\x89\x42\x04\x52\x75\x05\xE8" +
+[offset_sub_rec_tmpid-0x98a, 0x68, # 0985...098A  call sub_rec_tmpid
+ $hWndText, 0xe8, SET_WINDOW_TEXT_ADDR-$lpNewAddr-0x994, # 098F...0994  call SetWindowTextA
+ 0x90c3, 0x9090].pack('lCLClSS') +
+
+"\0"*8 + $str::MSG_LOAD_UNSUCC + $str::MSG_LOAD_SUCC + # 09A0...09A8...09B0  string msg_load_unsucc msg_load_succ
+$str::MSG_LOAD.ljust(0x20, "\0") # 09B0...09D0  string msg_load
 
     WriteProcessMemory.call_r($hPrc, $lpNewAddr, injBuf, injBuf.size, 0)
 
@@ -431,13 +470,11 @@ $str::MSG_SAVE_UNSUCC.ljust(0x20, "\0") + # 07C0...07E0  string msg_save_unsucc
 
     callFunc(@_sub_init)
   end
-  def compatibilizeExtSL(bEnable, raiseErr=true)
-    call = raiseErr ? :call_r : :call
-    SL_PATCH_BYTES_1.each {|i| WriteProcessMemory.send(call, $hPrc, i[0]+BASE_ADDRESS, bEnable ? (i[3] % [instance_variable_get(i[4])].pack('L')) : i[2], i[1], 0)}
+  def compatibilizeExtSL(bEnable)
+    SL_PATCH_BYTES_1.each {|i| WriteProcessMemory.call_r($hPrc, i[0], bEnable ? (i[3] % [instance_variable_get(i[4])].pack('l')) : i[2], i[1], 0)}
   end
-  def enableAutoSave(bEnable, raiseErr=true)
-    call = raiseErr ? :call_r : :call
-    SL_PATCH_BYTES_2.each {|i| ad = i[0]+BASE_ADDRESS; WriteProcessMemory.send(call, $hPrc, ad, bEnable ? (i[3] % [instance_variable_get(i[4])-i[5]-ad].pack('l')) : i[2], i[1], 0)}
+  def enableAutoSave(bEnable)
+    SL_PATCH_BYTES_2.each {|i| WriteProcessMemory.call_r($hPrc, i[0], bEnable ? (i[3] % [instance_variable_get(i[4])-i[5]-i[0]].pack('l')) : i[2], i[1], 0)}
   end
   def raiseInvalDir(reason)
     if msgboxTxt(24, MB_ICONEXCLAMATION | MB_OKCANCEL, $str::STRINGS[reason]) == IDCANCEL
@@ -448,23 +485,17 @@ $str::MSG_SAVE_UNSUCC.ljust(0x20, "\0") + # 07C0...07E0  string msg_save_unsucc
   end
 end
 
-CallFuncCallBack = API::Callback.new('LLLL', 'L') {|hWnd, msgID, cData, res| writeMemoryDWORD(MIDSPEED_ADDR, MIDSPEED_ORIG)} # restore
-def callFuncAsync(address) # return immediately, but exec callback after the message is completed
-  writeMemoryDWORD(MIDSPEED_ADDR, address-MIDSPEED_ADDR-4)
-  SendMessageCallback.call_r($hWnd, WM_COMMAND, MIDSPEED_MENUID, 0, CallFuncCallBack, 0)
-end
-def ignoreHotkey()
-  while !PeekMessage.call($buf, 0, 0, 0, 1).zero? # discard all hotkey signals during this process
-  end
-end
 def preExit() # finalize
-  SL.enableAutoSave(false, false)
-  SL.compatibilizeExtSL(false, false) # restore
+  return if $preExitProcessed # do not exec twice
+  $preExitProcessed = true
+  begin
+    SL.enableAutoSave(false)
+    SL.compatibilizeExtSL(false) # restore
+  rescue Exception
+  end
   VirtualFreeEx.call($hPrc || 0, $lpNewAddr, 0, MEM_RELEASE)
   CloseHandle.call($hPrc || 0)
-  for i in 1..4
-    UnregisterHotKey.call(0, 1)
-  end
+  UnregisterHotKey.call(0, 2)
 end
 def raise_r(*argv)
   preExit() # ensure all resources disposed
@@ -497,49 +528,15 @@ def init()
 end
 
 init()
-failedHotkeys = ''
-for i in 0..2
-  m = SL_MODIFIERS[i & 1]
-  k = SL_HOTKEYS[i >> 1]
-  failedHotkeys += $str::STRINGS[21+i] % [m, k] if RegisterHotKey.call(0, 1+i, m, k).zero?
-end
-RegisterHotKey.call_r(0, 4, SL_MODIFIERS[1], SL_HOTKEYS[1]) # quit
+RegisterHotKey.call_r(0, 2, SL_QUIT_HOTKEY >> 8, SL_QUIT_HOTKEY & 0xFF)
 msgboxTxt(11)
-msgboxTxt(20, MB_ICONEXCLAMATION, failedHotkeys) unless failedHotkeys.empty?
 
 while GetMessage.call($buf, 0, 0, 0) > 0
   msg = $buf.unpack(MSG_INFO_STRUCT)
   next if msg[1] != WM_HOTKEY
 
-  break if msg[2] == 4
+  break if msg[2] == 2
   init if IsWindow.call($hWnd).zero? # reinit if TSW has quitted
-
-  hasPopup = (API.focusTSW() != $hWnd) # bring that TSW game window to front end
-  if hasPopup then msgboxTxt(27, MB_ICONEXCLAMATION); next end
-  case msg[2]
-  when 1
-    callFuncAsync(SL._sub_loadanydat) # if SendMessage is used here, GetOpenFileName can easily cause dead lock (freeze)
-  when 2
-    callFuncAsync(SL._sub_saveanydat)
-  when 3
-    callFunc(SL._sub_load_temp)
-    ignoreHotkey()
-    id = (readMemoryDWORD(SL._tmp_id)-1) & 0xFF
-    res = readMemoryDWORD(TEDIT8_MSGID_ADDR)
-    if res.zero?
-      msg = $str::MSG_LOAD_UNSUCC % id
-    else
-      id = (id+1) & 0xFF if res == 0x85 # success; then the id has already been subtracted by 1
-      len = SendMessage.call($hWndText, WM_GETTEXT, 640, $buf)
-      if $buf[len-1, 1] == '.'
-        len -= 1 # remove the tailing period
-      elsif $buf[len-2, 2] == "\xA1\xA3"
-        len -= 2 # remove the tailing full-width period
-      end
-      msg = $buf[0, len] + (' - auto%02X.tmp' % id)
-    end
-    SendMessage.call($hWndText, WM_SETTEXT, 0, msg)
-  end
 end
 preExit
 msgboxTxt(13)

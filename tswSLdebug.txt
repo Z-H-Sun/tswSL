@@ -1,20 +1,13 @@
-# If the program fails to automatically find the handle of the window or process ID of TSW, uncomment the following lines and manually assign them here:
-# $hWnd = 0x0
-# $pID = 0
+# Uncomment the following line to turn off auto saving temp data (i.e., snapshots), but other tswSL functions are not affected
+# $SLautosave = false
 
-# The following lines modifies the Save Any Data hotkeys to be Ctrl+F1; Quit hotkeys to Ctrl+Bksp
-# and Load Any Data hotkeys to be Alt+F1
-# Note: the change of SL_HOTKEYS will affect both Save Any Data and Load Any Data commands
-# and the change of SL_MODIFIERS[0] will both load commands; SL_MODIFIERS[1], both save and quit commands
-SL_MODIFIERS[1] = 2
-SL_HOTKEYS[0] = 112
+# The following lines modify the Load Any Data hotkeys to be 'O'; Save Any Data to be 'S'; Rewind to Prev Snapshot to be 'Alt+Bksp'
+SL_HOTKEYS[0] = 0x000 | 'O'.ord
+SL_HOTKEYS[1] = 0x000 | 'S'.ord
+SL_HOTKEYS[2] = 0x100 | VK_BACK
 
-# And so on.
-# Cheat sheet: 0=None, 1=Alt, 2=Ctrl, 4=Shift, 8=Win.
-# Virtual key codes: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes. A-Z is just their ASCII (65-90). F1-F12 is 112-123.
-# | SL_MODIFIERS | SL_HOTKEYS | Function |
-# | --- | --- | --- |
-# | 0 | 0 | Load Any Data |
-# | 1 | 0 | Save Any Data |
-# | 0 | 1 | Take Back A Move |
-# | 1 | 1 | Quit |
+# The following line modifies the Quit hotkeys to 'Ctrl+Shift+Bksp'
+SL_QUIT_HOTKEY = 0x600 | VK_BACK
+
+# In the definitions of hotkeys above, the high byte defines the modifier: 0=None, 1=Alt, 2=Ctrl, 4=Shift, 8=Win;
+# And the low byte is the virtual key code: https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes, e.g., A-Z is just their ASCII (65-90). F1-F12 is 112-123.
