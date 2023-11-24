@@ -1,3 +1,7 @@
+#!/usr/bin/env ruby
+# encoding: ASCII-8Bit
+# If there is any non-ASCII characters in this file, please save it with ANSI (locale) encoding, not UTF-8
+
 # Unless otherwise noted, all settings here will be updated every time you start a new TSW process
 # i.e., while TSW is not running, and this app is hibernating, you can modify and save this file, and these settings will be applied the next time you start TSW
 

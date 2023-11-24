@@ -111,7 +111,7 @@ module Win32
       when 'OpenProcess', 'WriteProcessMemory', 'ReadProcessMemory', 'VirtualAllocEx'
         reason = "Cannot open / read from / write to / alloc memory for the TSW process. Please check if TSW V1.2 is running with pID=#{$pID} and if you have proper permissions."
       when 'RegisterHotKey'
-        reason = "Cannot register hotkey. It might be currently occupied by other processes or another instance of tswSL. Please close them to avoid confliction. Default: Ctrl+Alt+Bksp (3+ 8); current: (#{SL_QUIT_HOTKEY >> 8}+ #{SL_QUIT_HOTKEY & 0xFF}). As an advanced option, you can manually assign `MODIFIER` and `KEY` in `tswSLdebug.txt'."
+        reason = "Cannot register hotkey. It might be currently occupied by other processes or another instance of tswSL. Please close them to avoid confliction. Default: Ctrl+Alt+Bksp (3+ 8); current: (#{SL_QUIT_HOTKEY >> 8}+ #{SL_QUIT_HOTKEY & 0xFF}). As an advanced option, you can manually assign `SL_QUIT_HOTKEY` in `tswSLdebug.txt'."
       else
         reason = "This is a fatal error. That is all we know."
       end
@@ -313,9 +313,11 @@ module SL
         @savedat_path = $buf[0, len].lines.first.chomp
       end
 
-      unless File.directory?(@savedat_path) then raiseInvalDir(27); next end
+      savedat_path_enc = @savedat_path.dup
+      savedat_path_enc.force_encoding('filesystem') if String.instance_methods.include?(:encoding) # this is necessary for Ruby > 1.9
+      unless File.directory?(savedat_path_enc) then raiseInvalDir(27); next end
       if @savedat_path.size < 2 then raiseInvalDir(25); next end # this is unlikely
-      @savedat_path = @savedat_path[0, 2] + @savedat_path[2..-1].gsub(/[\/\\]+/, "\\").sub(/\\$/, '') # normalize file path (changing / into \; reducing multiple consecutive slashes into 1; removing tailing \); the first 2 chars might be \\ which should not be reduced
+      @savedat_path = @savedat_path[0, 2].gsub('/', "\\") + @savedat_path[2..-1].gsub(/[\/\\]+/, "\\").sub(/\\$/, '') # normalize file path (changing / into \; reducing multiple consecutive slashes into 1; removing tailing \); the first 2 chars might be \\ which should not be reduced
 
       @tmp_filename = @savedat_path + '\autoID.tmp' # autoID: stores current index; auto00~autoFF: 256 temp data files
       tmpsize = @tmp_filename.size
@@ -657,7 +659,7 @@ begin
 rescue Exception
 end
 
-$bufHWait = "\0" * (POINTER_SIZE<<1)
+$bufHWait = "\0" * (POINTER_SIZE << 1)
 $hMod = GetModuleHandle.call_r(0)
 $hIco = LoadImage.call($hMod, APP_ICON_ID, IMAGE_ICON, 48, 48, LR_SHARED)
 $hWndStatic1 = CreateWindowEx.call_r(WS_EX_TOOLWINDOW|WS_EX_TOPMOST, 'STATIC', nil, WS_POPUP|WS_BORDER|SS_SUNKEN|SS_NOTIFY|SS_RIGHT, 20, 20, 142, 52, 0, 0, 0, 0)
