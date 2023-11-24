@@ -141,6 +141,7 @@ end
 VirtualAllocEx = API.new('VirtualAllocEx', 'LLLLL', 'L', 'kernel32')
 VirtualFreeEx = API.new('VirtualFreeEx', 'LLLL', 'L', 'kernel32')
 GetModuleHandle = API.new('GetModuleHandle', 'I', 'L', 'kernel32')
+LoadImage = API.new('LoadImage', 'LLIIII', 'L', 'user32')
 CreateWindowEx = API.new('CreateWindowEx', 'LSSLIIIILLLL', 'L', 'user32')
 SetWindowText = API.new('SetWindowTextA', 'LS', 'L', 'user32')
 SetWindowTextW = API.new('SetWindowTextW', 'LS', 'L', 'user32')
@@ -156,6 +157,9 @@ QS_TIMER = 0x10
 QS_ALLBUTTIMER = QS_ALLINPUT & ~QS_TIMER
 WAIT_TIMEOUT = 258
 
+LR_SHARED = 0x8000
+IMAGE_ICON = 1
+ICON_BIG = 1
 WS_POPUP = 0x80000000
 WS_CHILD = 0x40000000
 WS_VISIBLE = 0x10000000
@@ -164,10 +168,11 @@ WS_EX_LAYERED = 0x80000
 WS_EX_TOOLWINDOW = 0x80
 WS_EX_TOPMOST = 8
 SS_SUNKEN = 0x1000
-SS_REALSIZEIMAGE = 0x800
 SS_NOTIFY = 0x100
 SS_ICON = 3
 SS_RIGHT = 2
+STM_SETICON = 0x170
+WM_SETICON = 0x80
 WM_LBUTTONDOWN = 0x201
 WM_MBUTTONDBLCLK = 0x209 # b/w 0x201 and 209 are mouse events
 
@@ -216,6 +221,7 @@ SL_HOTKEYS = [0x200 | 'L'.ord, 0x200 | 'S'.ord, 0x000 | VK_BACK, 0x400 | VK_BACK
 SL_QUIT_HOTKEY = 0x300 | VK_BACK # Ctrl+Alt+Backspace
 # high byte = modifier (1=Alt, 2=Ctrl, 4=Shift); low byte = key
 INTERVAL_TSW_RECHECK = 500 # in msec: when TSW is not running, check every 500 ms if a new TSW instance has started up
+APP_ICON_ID = 1 # Icons will be shown in the GUI of this app; this defines the integer identifier of the icon resource in the executable
 
 $SLautosave = true # whether to enable auto saving temp data
 
@@ -297,20 +303,28 @@ module SL
   end
   module_function
   def init
-    memo12 = readMemoryDWORD($TTSW+OFFSET_MEMO12)
-    hWndMemo12 = readMemoryDWORD(memo12+OFFSET_HWND)
-    len = SendMessage.call(hWndMemo12, WM_GETTEXT, 640, $buf) # MAX_PATH is 260, but there are two lines each with a path, and also one can never be too cautious
+    @savedat_path = $SLdatapath
+    tmpsize = 0
+    loop do
+      unless @savedat_path
+        memo12 = readMemoryDWORD($TTSW+OFFSET_MEMO12)
+        hWndMemo12 = readMemoryDWORD(memo12+OFFSET_HWND)
+        len = SendMessage.call(hWndMemo12, WM_GETTEXT, 640, $buf) # MAX_PATH is 260, but there are two lines each with a path, and also one can never be too cautious
+        @savedat_path = $buf[0, len].lines.first.chomp
+      end
 
-    @savedat_path = $buf[0, len].lines.first.chomp
-    return raiseInvalDir(25) if @savedat_path.size < 2 # this is unlikely
-    @savedat_path = @savedat_path[0, 2] + @savedat_path[2..-1].gsub(/[\/\\]+/, "\\").sub(/\\$/, '') # normalize file path (changing / into \; reducing multiple consecutive slashes into 1; removing tailing \); the first 2 chars might be \\ which should not be reduced
+      unless File.directory?(@savedat_path) then raiseInvalDir(27); next end
+      if @savedat_path.size < 2 then raiseInvalDir(25); next end # this is unlikely
+      @savedat_path = @savedat_path[0, 2] + @savedat_path[2..-1].gsub(/[\/\\]+/, "\\").sub(/\\$/, '') # normalize file path (changing / into \; reducing multiple consecutive slashes into 1; removing tailing \); the first 2 chars might be \\ which should not be reduced
 
-    tmp_filename = @savedat_path + '\autoID.tmp' # autoID: stores current index; auto00~autoFF: 256 temp data files
-    tmpsize = tmp_filename.size
-    return raiseInvalDir(26) if tmpsize > MAX_PATH-4 # MAX_PATH includes the tailing \0; also, need to ensure `dat_filename` is also within this length
+      @tmp_filename = @savedat_path + '\autoID.tmp' # autoID: stores current index; auto00~autoFF: 256 temp data files
+      tmpsize = @tmp_filename.size
+      if tmpsize > MAX_PATH-4 then raiseInvalDir(26); next end # MAX_PATH includes the tailing \0; also, need to ensure `dat_filename` is also within this length
+      break
+    end
 
     @tmp_id_addr = $lpNewAddr + tmpsize - 6 # can substitute ID with 00~FF at this address
-    dat_filename = tmp_filename[0...-10] + Time.now.strftime('%y%m%d_1.dat')
+    dat_filename = @tmp_filename[0...-10] + Time.now.strftime('%y%m%d_1.dat')
 
     # these are all pointers to the corresponding variables:
     @null_pointer = 0
@@ -353,7 +367,7 @@ module SL
     @_sub_checkHotkey = $lpNewAddr + 0x924
     @TTSW10_formkeydown_offset_sub_checkHotkey = @_sub_checkHotkey-FORMKEYDOWN_ADDR-5
 
-    injBuf = tmp_filename.ljust(MAX_PATH+10, "\0") + # 0000...0108: string tmp_filename; 0108...010C: dword bytesRead; 010C: byte tmp_id
+    injBuf = @tmp_filename.ljust(MAX_PATH+10, "\0") + # 0000...0108: string tmp_filename; 0108...010C: dword bytesRead; 010C: byte tmp_id
 "\xFE\0" + # 010E: word last_coordinate = x+y*16+floor*256 (do not save temp data with the same last_coordinate; set as 254 at the start of / after loading a game, so no coordinate will be equal to this value, i.e. always save a first temp data)
 dat_filename.ljust(MAX_PATH+4, "\0") + "_1.dat\0\0" + # 0110...0218: string dat_filename; 0218...0220: qword string dat_suffix
 '000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F808182838485868788898A8B8C8D8E8F909192939495969798999A9B9C9D9E9FA0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBFC0C1C2C3C4C5C6C7C8C9CACBCCCDCECFD0D1D2D3D4D5D6D7D8D9DADBDCDDDEDFE0E1E2E3E4E5E6E7E8E9EAEBECEDEEEFF0F1F2F3F4F5F6F7F8F9FAFBFCFDFEFF' + # 0220...0420: word string[256] id_str # covert byte to 2-digit hex string
@@ -524,13 +538,14 @@ $str::MSG_LOAD.ljust(0x20, "\0") # 09B0...09D0  string msg_load
       preExit; msgboxTxt(13); exit
     end
     SendMessage.call($hWnd, WM_COMMAND, CHANGE_SAVEDIR_MENUID, 0)
-    init
+    @savedat_path = nil
   end
 end
 
 def disposeRes() # when switching to a new TSW process, hDC and hPrc will be regenerated, and the old ones should be disposed of
   VirtualFreeEx.call($hPrc || 0, $lpNewAddr || 0, 0, MEM_RELEASE)
   CloseHandle.call($hPrc || 0)
+  $appTitle = nil
 end
 def preExit() # finalize
   return if $preExitProcessed # do not exec twice
@@ -589,6 +604,8 @@ def init()
   ShowWindow.call($hWndStatic1, SW_HIDE)
   Str.isCHN()
   initLang()
+  $appTitle = 'tswSL - pID=%d' % $pID
+  $appTitle = Str.utf8toWChar($appTitle) if $isCHN
 
   $lpNewAddr = VirtualAllocEx.call_r($hPrc, 0, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) # 1 page size
   SL.init
@@ -642,8 +659,11 @@ end
 
 $bufHWait = "\0" * (POINTER_SIZE<<1)
 $hMod = GetModuleHandle.call_r(0)
-$hWndStatic1 = CreateWindowEx.call_r(WS_EX_TOOLWINDOW|WS_EX_TOPMOST, 'STATIC', '', WS_POPUP|WS_BORDER|SS_SUNKEN|SS_NOTIFY|SS_RIGHT, 20, 20, 142, 52, 0, 0, 0, 0)
-$hWndStatic2 = CreateWindowEx.call_r(0, 'STATIC', '#1', WS_CHILD|WS_VISIBLE|SS_REALSIZEIMAGE|SS_ICON, 0, 0, 48, 48, $hWndStatic1, 0, $hMod, 0)
+$hIco = LoadImage.call($hMod, APP_ICON_ID, IMAGE_ICON, 48, 48, LR_SHARED)
+$hWndStatic1 = CreateWindowEx.call_r(WS_EX_TOOLWINDOW|WS_EX_TOPMOST, 'STATIC', nil, WS_POPUP|WS_BORDER|SS_SUNKEN|SS_NOTIFY|SS_RIGHT, 20, 20, 142, 52, 0, 0, 0, 0)
+$hWndStatic2 = CreateWindowEx.call_r(0, 'STATIC', nil, WS_CHILD|WS_VISIBLE|SS_ICON, 0, 0, 48, 48, $hWndStatic1, 0, 0, 0) # a simpler method without the need of calling LoadImage is to set the title as '#1', but that cannot specify the icon size to be 48x48 (see commit `eea9ca7`)
+SendMessage.call($hWndStatic2, STM_SETICON, $hIco, 0)
+
 RegisterHotKey.call_r(0, 2, SL_QUIT_HOTKEY >> 8, SL_QUIT_HOTKEY & 0xFF)
 initLang()
 waitInit() unless init()
@@ -656,7 +676,5 @@ loop do
     next
   when 1 # this thread's msg
     checkMsg()
-  else
-    next
   end
 end

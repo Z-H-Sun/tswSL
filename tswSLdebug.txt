@@ -1,8 +1,14 @@
 # Unless otherwise noted, all settings here will be updated every time you start a new TSW process
-# i.e., while TSW is not running, you can modify this file, and these settings will be applied the next time you run TSW
+# i.e., while TSW is not running, and this app is hibernating, you can modify and save this file, and these settings will be applied the next time you start TSW
 
 # Uncomment the following line to turn off auto saving temp data (i.e., snapshots), but other tswSL functions are not affected
 # $SLautosave = false
+
+# Uncomment the following line to specify the path of all temp data and arbitrary data, disregarding TSW's own saving path
+# Note: this folder must exist, and the length should not be too long; otherwise, TSW's own saving path will be used
+# $SLdatapath = 'C:/Game'
+# The following line indicates auto determination of the data saving path, i.e., using TSW's data saving path
+$SLdatapath = nil
 
 # The following line makes this app always shown in Chinese language
 $isCHN = 1
