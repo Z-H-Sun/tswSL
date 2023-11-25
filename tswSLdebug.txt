@@ -12,7 +12,7 @@
 # Note: this folder must exist, and the length should not be too long; otherwise, TSW's own saving path will be used
 # $SLdatapath = 'C:/Game'
 # The following line indicates auto determination of the data saving path, i.e., using TSW's data saving path
-$SLdatapath = nil
+# $SLdatapath = nil
 
 # The following line makes this app always shown in Chinese language
 $isCHN = 1

@@ -4,7 +4,7 @@
 require 'win32/api'
 include Win32
 GetMessage = API.new('GetMessage', 'PLLL', 'I', 'user32')
-PeekMessage = API.new('PeekMessage','PLLLI','I', 'user32')
+PeekMessage = API.new('PeekMessage', 'PLLLI', 'I', 'user32')
 SendMessage = API.new('SendMessageA', 'LLLP', 'L', 'user32')
 SendMessageW = API.new('SendMessageW', 'LLLP', 'L', 'user32')
 OpenProcess = API.new('OpenProcess', 'LLL', 'L', 'kernel32')
@@ -111,7 +111,7 @@ module Win32
       when 'OpenProcess', 'WriteProcessMemory', 'ReadProcessMemory', 'VirtualAllocEx'
         reason = "Cannot open / read from / write to / alloc memory for the TSW process. Please check if TSW V1.2 is running with pID=#{$pID} and if you have proper permissions."
       when 'RegisterHotKey'
-        reason = "Cannot register hotkey. It might be currently occupied by other processes or another instance of tswSL. Please close them to avoid confliction. Default: Ctrl+Alt+Bksp (3+ 8); current: (#{SL_QUIT_HOTKEY >> 8}+ #{SL_QUIT_HOTKEY & 0xFF}). As an advanced option, you can manually assign `SL_QUIT_HOTKEY` in `tswSLdebug.txt'."
+        reason = "Cannot register hotkey. It might be currently occupied by other processes or another instance of tswSL. Please close them to avoid confliction. Default: Ctrl+Alt+Bksp (3+ 8); current: (#{SL_QUIT_HOTKEY >> 8}+ #{SL_QUIT_HOTKEY & 0xFF}). As an advanced option, you can manually assign `SL_QUIT_HOTKEY` in `#{APP_SETTINGS_FNAME}'."
       else
         reason = "This is a fatal error. That is all we know."
       end
@@ -222,6 +222,7 @@ SL_QUIT_HOTKEY = 0x300 | VK_BACK # Ctrl+Alt+Backspace
 # high byte = modifier (1=Alt, 2=Ctrl, 4=Shift); low byte = key
 INTERVAL_TSW_RECHECK = 500 # in msec: when TSW is not running, check every 500 ms if a new TSW instance has started up
 APP_ICON_ID = 1 # Icons will be shown in the GUI of this app; this defines the integer identifier of the icon resource in the executable
+APP_SETTINGS_FNAME = 'tswSLdebug.txt'
 
 $SLautosave = true # whether to enable auto saving temp data
 
@@ -571,6 +572,10 @@ def initLang()
     alias :msgboxTxt :msgboxTxtA
   end
 end
+def initSettings()
+  load(File.exist?(APP_SETTINGS_FNAME) ? APP_SETTINGS_FNAME : File.join(APP_PATH, APP_SETTINGS_FNAME))
+rescue Exception
+end
 def waitTillAvail(addr) # upon initialization of TSW, some pointers or handles are not ready yet; need to wait
   r = readMemoryDWORD(addr)
   while r.zero?
@@ -578,6 +583,8 @@ def waitTillAvail(addr) # upon initialization of TSW, some pointers or handles a
     when 0 # TSW quits during waiting
       disposeRes()
       return
+    when 1 # this thread's msg
+      checkMsg(false)
     when WAIT_TIMEOUT
       r = readMemoryDWORD(addr)
     end
@@ -590,10 +597,7 @@ def init()
   $pID = $buf.unpack('L')[0]
   return false if $hWnd.zero? or $pID.zero? or $tID.zero?
 
-  begin
-    load('tswSLdebug.txt')
-  rescue Exception
-  end
+  initSettings()
   $hPrc = OpenProcess.call_r(PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_VM_OPERATION | PROCESS_SYNCHRONIZE, 0, $pID)
   $bufHWait[0, POINTER_SIZE] = [$hPrc].pack(HANDLE_ARRAY_STRUCT)
 
@@ -654,11 +658,10 @@ def checkMsg(checkAll=true)
   end
 end
 
-begin
-  load('tswSLdebug.txt')
-rescue Exception
-end
-
+CUR_PATH = Dir.pwd
+APP_PATH = File.dirname($Exerb ? ExerbRuntime.filepath : __FILE__) # after packed by ExeRB into exe, __FILE__ will be useless
+initSettings()
+initLang()
 $bufHWait = "\0" * (POINTER_SIZE << 1)
 $hMod = GetModuleHandle.call_r(0)
 $hIco = LoadImage.call($hMod, APP_ICON_ID, IMAGE_ICON, 48, 48, LR_SHARED)
@@ -667,7 +670,6 @@ $hWndStatic2 = CreateWindowEx.call_r(0, 'STATIC', nil, WS_CHILD|WS_VISIBLE|SS_IC
 SendMessage.call($hWndStatic2, STM_SETICON, $hIco, 0)
 
 RegisterHotKey.call_r(0, 2, SL_QUIT_HOTKEY >> 8, SL_QUIT_HOTKEY & 0xFF)
-initLang()
 waitInit() unless init()
 
 loop do
